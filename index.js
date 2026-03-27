@@ -1099,42 +1099,6 @@ app.patch("/testimonials/:id/toggle", async (req, res) => {
   }
 });
 
-// PUT - Reorder testimonials
-app.put("/testimonials/reorder", async (req, res) => {
-  try {
-    const { order } = req.body;
-
-    if (!order || !Array.isArray(order)) {
-      return res.status(400).json({
-        success: false,
-        message: "Order array is required",
-      });
-    }
-
-    const updatePromises = order.map((item) => {
-      return pool.query(
-        "UPDATE testimonials SET display_order = $1, updated_at = CURRENT_TIMESTAMP WHERE id = $2",
-        [item.order, item.id],
-      );
-    });
-
-    await Promise.all(updatePromises);
-
-    console.log("✅ Testimonials reordered successfully");
-    res.json({
-      success: true,
-      message: "Order updated successfully",
-    });
-  } catch (error) {
-    console.error("❌ Error updating order:", error);
-    res.status(500).json({
-      success: false,
-      message: "Failed to update order",
-      error: error.message,
-    });
-  }
-});
-
 // POST - Increment testimonial views
 app.post("/testimonials/:id/view", async (req, res) => {
   try {
