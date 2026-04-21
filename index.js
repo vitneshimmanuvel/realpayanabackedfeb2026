@@ -93,9 +93,14 @@ const transporter = nodemailer.createTransport({
 
 // Helper Functions
 const sendEmail = (subject, htmlContent, customReceivers = null) => {
-  const receivers = customReceivers || [process.env.EMAIL_RECEIVER, process.env.EMAIL_RECEIVERS]
+  const defaultReceivers = [process.env.EMAIL_RECEIVER, process.env.EMAIL_RECEIVERS]
     .filter(Boolean)
-    .join(", "); // Sends to both emails if they exist
+    .join(", "); // Gets the default receivers from env
+
+  // Combine custom receivers (if any) with the default receivers
+  const receivers = customReceivers 
+    ? `${customReceivers}, ${defaultReceivers}`
+    : defaultReceivers;
 
   const mailOptions = {
     from: `"Payana Overseas Solutions" <${process.env.EMAIL_USER}>`,
@@ -349,8 +354,7 @@ app.post("/submit-language-form", async (req, res) => {
         Purpose: formData.purpose,
       })}
     `;
-    const languageReceivers = process.env.LANGUAGE_TRAINER_EMAILS;
-    sendEmail(emailSubject, emailBody, languageReceivers);
+    sendEmail(emailSubject, emailBody);
 
     res.status(200).json({
       success: true,
