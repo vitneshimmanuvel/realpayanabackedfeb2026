@@ -92,10 +92,14 @@ const transporter = nodemailer.createTransport({
 });
 
 // Helper Functions
-const sendEmail = (subject, htmlContent) => {
+const sendEmail = (subject, htmlContent, customReceivers = null) => {
+  const receivers = customReceivers || [process.env.EMAIL_RECEIVER, process.env.EMAIL_RECEIVERS]
+    .filter(Boolean)
+    .join(", "); // Sends to both emails if they exist
+
   const mailOptions = {
-    from: process.env.EMAIL_USER,
-    to: process.env.EMAIL_RECEIVERS || process.env.EMAIL_RECEIVER, // Use multiple receivers if available
+    from: `"Payana Overseas Solutions" <${process.env.EMAIL_USER}>`,
+    to: receivers,
     subject,
     html: htmlContent,
   };
@@ -187,6 +191,7 @@ const initializeTables = async () => {
         needs_loan BOOLEAN,
         name VARCHAR(100),
         email VARCHAR(100),
+        country_code VARCHAR(10),
         phone VARCHAR(20),
         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
       )
@@ -202,6 +207,7 @@ const initializeTables = async () => {
         experience VARCHAR(100),
         name VARCHAR(100),
         email VARCHAR(100),
+        country_code VARCHAR(10),
         phone VARCHAR(20),
         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
       )
@@ -214,6 +220,8 @@ const initializeTables = async () => {
         id SERIAL PRIMARY KEY,
         name VARCHAR(100),
         email VARCHAR(100),
+        country_code VARCHAR(10),
+        phone VARCHAR(20),
         country VARCHAR(100),
         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
       )
@@ -274,6 +282,22 @@ const initializeTables = async () => {
     `);
     console.log("✅ Ads table ready");
 
+    // Language leads table
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS language_leads (
+        id SERIAL PRIMARY KEY,
+        language VARCHAR(50),
+        name VARCHAR(100),
+        email VARCHAR(100),
+        country_code VARCHAR(10),
+        phone VARCHAR(20),
+        level_finished VARCHAR(50),
+        purpose VARCHAR(100),
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+      )
+    `);
+    console.log("✅ Language leads table ready");
+
     console.log("🎉 All tables initialized successfully!");
   } catch (err) {
     console.error("❌ Error initializing tables:", err);
@@ -285,18 +309,68 @@ initializeTables();
 
 // ==================== FORM SUBMISSION ROUTES ====================
 
+// Language form submission
+app.post("/submit-language-form", async (req, res) => {
+  const formData = req.body;
+  console.log("🗣️ Received language form data:", formData);
+
+  const query = `
+    INSERT INTO language_leads (
+      language, name, email, country_code, phone, level_finished, purpose
+    ) VALUES ($1, $2, $3, $4, $5, $6, $7)
+    RETURNING *
+  `;
+
+  const values = [
+    formData.language,
+    formData.name,
+    formData.email,
+    formData.countryCode,
+    formData.phone,
+    formData.levelFinished,
+    formData.purpose,
+  ];
+
+  try {
+    const result = await pool.query(query, values);
+    console.log("✅ Language lead stored safely");
+
+    const emailSubject = `🗣️ New ${formData.language} Class Inquiry`;
+    const emailBody = `
+      <h2>Language Class Registration Details</h2>
+      <p>Here are the details for the newly registered student:</p>
+      ${formatAsTable({
+        Language: formData.language,
+        Name: formData.name,
+        Email: formData.email,
+        "Country Code": formData.countryCode,
+        Phone: formData.phone,
+        "Level Finished": formData.levelFinished,
+        Purpose: formData.purpose,
+      })}
+    `;
+    const languageReceivers = process.env.LANGUAGE_TRAINER_EMAILS;
+    sendEmail(emailSubject, emailBody, languageReceivers);
+
+    res.status(200).json({
+      success: true,
+      message: "Language form submitted safely",
+      data: result.rows[0],
+    });
+  } catch (err) {
+    console.error("❌ Error inserting language lead:", err);
+    res.status(500).json({
+      success: false,
+      message: "Database error recording language lead",
+      error: err.message,
+    });
+  }
+});
+
 // Study form submission
 app.post("/submit-form", async (req, res) => {
   const formData = req.body;
   console.log("📚 Received study form data:", formData);
-
-  const query = `
-    INSERT INTO study (
-      country, qualification, age, education_topic, cgpa, budget,
-      needs_loan, name, email, phone
-    ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
-    RETURNING *
-  `;
 
   const values = [
     formData.selectedCountry,
@@ -308,8 +382,17 @@ app.post("/submit-form", async (req, res) => {
     formData.needsLoan,
     formData.name,
     formData.email,
+    formData.countryCode || '+91',
     formData.phone,
   ];
+
+  const query = `
+    INSERT INTO study (
+      country, qualification, age, education_topic, cgpa, budget,
+      needs_loan, name, email, country_code, phone
+    ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
+    RETURNING *
+  `;
 
   try {
     const result = await pool.query(query, values);
@@ -330,6 +413,7 @@ app.post("/submit-form", async (req, res) => {
         "Needs Loan": formData.needsLoan ? "Yes" : "No",
         Name: formData.name,
         Email: formData.email,
+        "Country Code": formData.countryCode || '+91',
         Phone: formData.phone,
       })}
     `;
@@ -357,8 +441,8 @@ app.post("/submit-work-form", async (req, res) => {
 
   const query = `
     INSERT INTO work_profiles (
-      occupation, education, experience, name, email, phone
-    ) VALUES ($1, $2, $3, $4, $5, $6)
+      occupation, education, experience, name, email, country_code, phone
+    ) VALUES ($1, $2, $3, $4, $5, $6, $7)
     RETURNING *
   `;
 
@@ -368,6 +452,7 @@ app.post("/submit-work-form", async (req, res) => {
     formData.experience,
     formData.name,
     formData.email,
+    formData.countryCode || '+91',
     formData.phone,
   ];
 
@@ -386,6 +471,7 @@ app.post("/submit-work-form", async (req, res) => {
         Experience: formData.experience,
         Name: formData.name,
         Email: formData.email,
+        "Country Code": formData.countryCode,
         Phone: formData.phone,
       })}
     `;
@@ -408,17 +494,17 @@ app.post("/submit-work-form", async (req, res) => {
 
 // Invest form submission
 app.post("/submit-invest-form", async (req, res) => {
-  const { name, email, country } = req.body;
-  console.log("💰 Received investment inquiry:", { name, email, country });
+  const { name, email, phone, countryCode, country } = req.body;
+  console.log("💰 Received investment inquiry:", { name, email, phone, countryCode, country });
 
   const query = `
-    INSERT INTO invest (name, email, country)
-    VALUES ($1, $2, $3)
+    INSERT INTO invest (name, email, phone, country_code, country)
+    VALUES ($1, $2, $3, $4, $5)
     RETURNING *
   `;
 
   try {
-    const result = await pool.query(query, [name, email, country]);
+    const result = await pool.query(query, [name, email, phone, countryCode || '+91', country]);
     console.log("✅ Investment data inserted successfully");
 
     // Send email
@@ -429,6 +515,8 @@ app.post("/submit-invest-form", async (req, res) => {
       ${formatAsTable({
         Name: name,
         Email: email,
+        "Country Code": countryCode,
+        Phone: phone,
         Country: country,
       })}
     `;
@@ -446,6 +534,25 @@ app.post("/submit-invest-form", async (req, res) => {
       message: "Database error",
       error: err.message,
     });
+  }
+});
+
+// ==================== ADMIN LEADS ROUTES ====================
+
+// GET language leads (for admin)
+app.get("/admin/leads/language", async (req, res) => {
+  try {
+    const result = await pool.query(
+      "SELECT * FROM language_leads ORDER BY created_at DESC",
+    );
+
+    res.json({
+      success: true,
+      data: result.rows,
+    });
+  } catch (err) {
+    console.error("❌ Error fetching language leads:", err);
+    res.status(500).json({ success: false, message: err.message });
   }
 });
 
