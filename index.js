@@ -92,29 +92,37 @@ const transporter = nodemailer.createTransport({
 });
 
 // Helper Functions
-const sendEmail = (subject, htmlContent, customReceivers = null) => {
+const sendEmail = async (subject, htmlContent, customReceivers = null, imageUrl = null) => {
   const defaultReceivers = [process.env.EMAIL_RECEIVER, process.env.EMAIL_RECEIVERS]
     .filter(Boolean)
-    .join(", "); // Gets the default receivers from env
+    .join(", "); 
 
-  // Combine custom receivers (if any) with the default receivers
   const receivers = customReceivers 
     ? `${customReceivers}, ${defaultReceivers}`
     : defaultReceivers;
+
+  // Add image to body if provided
+  let finalHtml = htmlContent;
+  if (imageUrl) {
+    finalHtml += `<br/><div style="margin-top: 20px;"><img src="${imageUrl}" alt="Inquiry Image" style="max-width: 100%; border-radius: 8px; box-shadow: 0 4px 10px rgba(0,0,0,0.1);"/></div>`;
+  }
 
   const mailOptions = {
     from: `"Payana Overseas Solutions" <${process.env.EMAIL_USER}>`,
     to: receivers,
     subject,
-    html: htmlContent,
+    html: finalHtml,
   };
 
-  transporter.sendMail(mailOptions, (error, info) => {
-    if (error) {
-      return console.error("Error sending email:", error);
-    }
-    console.log("Email sent:", info.response);
-  });
+  try {
+    const info = await transporter.sendMail(mailOptions);
+    console.log("✅ Email sent successfully:", info.response);
+    return info;
+  } catch (error) {
+    console.error("❌ Error sending email:", error);
+    // On Vercel, we want to know if it failed
+    return null;
+  }
 };
 
 const formatAsTable = (dataObj) => {
@@ -354,7 +362,7 @@ app.post("/submit-language-form", async (req, res) => {
         Purpose: formData.purpose,
       })}
     `;
-    sendEmail(emailSubject, emailBody);
+    await sendEmail(emailSubject, emailBody);
 
     res.status(200).json({
       success: true,
@@ -421,7 +429,7 @@ app.post("/submit-form", async (req, res) => {
         Phone: formData.phone,
       })}
     `;
-    sendEmail(emailSubject, emailBody);
+    await sendEmail(emailSubject, emailBody);
 
     res.status(200).json({
       success: true,
@@ -479,7 +487,7 @@ app.post("/submit-work-form", async (req, res) => {
         Phone: formData.phone,
       })}
     `;
-    sendEmail(emailSubject, emailBody);
+    await sendEmail(emailSubject, emailBody);
 
     res.status(200).json({
       success: true,
@@ -524,7 +532,7 @@ app.post("/submit-invest-form", async (req, res) => {
         Country: country,
       })}
     `;
-    sendEmail(emailSubject, emailBody);
+    await sendEmail(emailSubject, emailBody);
 
     res.status(200).json({
       success: true,
@@ -707,6 +715,20 @@ app.post("/news", upload.single("image"), async (req, res) => {
 
     const result = await pool.query(query, values);
     console.log("✅ News article created successfully");
+
+    // Send email trigger for new article
+    const emailSubject = `📰 New News Article: ${tag}`;
+    const emailBody = `
+      <h2>New News Article Created</h2>
+      <p>A new article has been posted to the website.</p>
+      ${formatAsTable({
+        Tag: tag,
+        Date: date,
+        Time: time,
+        Description: Array.isArray(descArray) ? descArray.join(" ") : description,
+      })}
+    `;
+    await sendEmail(emailSubject, emailBody, null, cloudinaryResult.secure_url);
 
     res.json({
       success: true,
@@ -1320,6 +1342,14 @@ app.post("/ads", upload.single("image"), async (req, res) => {
 
     const result = await pool.query(query, values);
     console.log("✅ Ad created successfully");
+
+    // Send email trigger for new ad
+    const emailSubject = `📢 New Advertisement Uploaded`;
+    const emailBody = `
+      <h2>New Ad Created</h2>
+      <p>A new advertisement image has been uploaded to the admin portal.</p>
+    `;
+    await sendEmail(emailSubject, emailBody, null, cloudinaryResult.secure_url);
 
     res.json({
       success: true,
